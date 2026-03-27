@@ -38,6 +38,12 @@ CONTEXT_BASELINE=22600
 LOCATION_CACHE_TTL=3600  # 1 hour (IP rarely changes)
 WEATHER_CACHE_TTL=900    # 15 minutes
 
+# Location preferences (hardcoded override for IP geolocation)
+PREF_CITY=$(jq -r '.preferences.locationCity // empty' "$SETTINGS_FILE" 2>/dev/null)
+PREF_STATE=$(jq -r '.preferences.locationState // empty' "$SETTINGS_FILE" 2>/dev/null)
+PREF_LAT=$(jq -r '.preferences.locationLat // empty' "$SETTINGS_FILE" 2>/dev/null)
+PREF_LON=$(jq -r '.preferences.locationLon // empty' "$SETTINGS_FILE" 2>/dev/null)
+
 # Source .env for API keys
 [ -f "$PAI_DIR/.env" ] && source "$PAI_DIR/.env"
 
@@ -314,6 +320,12 @@ current_time=$(date +"%H:%M")
 
 # Fetch location from IP (with caching)
 fetch_location() {
+    # Use hardcoded location if configured
+    if [ -n "$PREF_CITY" ]; then
+        echo "${PREF_CITY}|${PREF_STATE}"
+        return
+    fi
+
     local cache_age=999999
     [ -f "$LOCATION_CACHE" ] && cache_age=$(($(date +%s) - $(stat -f %m "$LOCATION_CACHE" 2>/dev/null || echo 0)))
 
@@ -339,13 +351,12 @@ fetch_weather() {
     [ -f "$WEATHER_CACHE" ] && cache_age=$(($(date +%s) - $(stat -f %m "$WEATHER_CACHE" 2>/dev/null || echo 0)))
 
     if [ "$cache_age" -gt "$WEATHER_CACHE_TTL" ]; then
-        # Get lat/lon from location cache
-        local lat="" lon=""
-        if [ -f "$LOCATION_CACHE" ]; then
+        # Get lat/lon: prefer configured, then cache, default to San Francisco
+        local lat="${PREF_LAT:-}" lon="${PREF_LON:-}"
+        if [ -z "$lat" ] && [ -f "$LOCATION_CACHE" ]; then
             lat=$(jq -r '.lat // empty' "$LOCATION_CACHE" 2>/dev/null)
             lon=$(jq -r '.lon // empty' "$LOCATION_CACHE" 2>/dev/null)
         fi
-        # Default to San Francisco if no location
         lat="${lat:-37.7749}"
         lon="${lon:-122.4194}"
 
